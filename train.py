@@ -1,14 +1,28 @@
+# libraries
+import math
+from model import UniversalHyperNetwork
 import torch
 from torch.utils.data import DataLoader
 from hypnettorch.mnets import MLP
 from hypnettorch.hnets import HMLP
 import numpy as np
+import argparse
+from contextlib import suppress
+import warnings
+from tqdm import tqdm
 
+# local code imports
 from data import *
+from utils import *
+from model import *
+
+# shut off warnings
+warnings.simplefilter("ignore")
+# switch on anomaly detection
+# torch.autograd.set_detect_anomaly(True)
 
 
-def train_one_epoch(args, models, data_objects, criterion, optimizer, scheduler, scaler, epoch):
-    (hnet, main_net) = models
+def train_one_epoch(args, hnet, data_objects, criterion, optimizer, scheduler, scaler, epoch):
     hnet.train()
     (dataset, indices_loader, encoder_loader) = data_objects
 
@@ -18,15 +32,19 @@ def train_one_epoch(args, models, data_objects, criterion, optimizer, scheduler,
     total = 0
     running_loss = 0
     total_loss = 0
-    autocast = torch.cuda.amp.autocast
+    autocast = suppress # NOTE: edit later
     logit_scale = torch.tensor(np.log(100.0)).to(args.device)
 
+    num_steps = math.ceil(len(dataset) / args.batch_size)
+    bar = tqdm(total=num_steps)
     for idx, batch_indices in enumerate(indices_loader):
         # first get the encoders for which we are observing the data stream
         encoder_indices, encoder_dims = next(encoder_loader)
         # get the data stream
         image_features, text_features = dataset.get_minibatch(batch_indices, encoder_indices, encoder_dims)
-        [B, N, D] = image_features.shape
+        [B, N, D_img] = image_features.shape
+        # image_features = pad_image_features(image_features, args.largest_image_dim - D_img)
+        D_txt = text_features.shape[-1]
 
         # cast embeddings
         image_features = image_features.float().to(args.device)
@@ -39,13 +57,25 @@ def train_one_epoch(args, models, data_objects, criterion, optimizer, scheduler,
 
         optimizer.zero_grad()
 
+        outputs = None
+
         # forward pass
+        params = []
         with autocast():
-            params = hnet(cond_id=encoder_indices)
+            print(encoder_indices)
+            # `mapped_text_features` has length = num_total_image_encoders
+            outputs = hnet(
+                conditions=encoder_indices,
+                input_features=text_features,
+                slice_dims=(D_img, D_txt)
+            )
+
             for i in range(N):
-                mapped_text_features = main_net(text_features, weights=params[i])
+                # now get the loss and predictions
+                # mapped_text_features = text_features @ outputs[i][0][:D_img, :D_txt].T + outputs[i][1][:D_img]
+
                 loss, inbatch_corrects = criterion.compute_loss_and_accuracy(
-                    logit_scale, image_features[:, i, :].view(B, D), mapped_text_features
+                    logit_scale, image_features[:, i, :].view(B, D_img), outputs[i]
                 )
 
                 total_loss += loss
@@ -61,20 +91,75 @@ def train_one_epoch(args, models, data_objects, criterion, optimizer, scheduler,
         running_loss /= N
 
         # backward pass
-        scaler.scale(total_loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+        if scaler is not None:
+            scaler.scale(total_loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            total_loss.backward(retain_graph=args.retain_graph)
+            optimizer.step()
 
-    return {"avg_loss": running_loss / len(indices_loader), "accuracies": accuracies}
+        bar.update(1)
+
+    return {"avg_loss": running_loss / num_steps, "accuracies": accuracies}
 
 
 def main(args):
-    kwargs = {}
-    dataset = UniversalEmbeddings(kwargs)
+    # load in training data
+    kwargs = {
+        "image_data_path": "datasets/random_image_embeddings.pt",
+        "text_data_path": "datasets/random_text_embeddings.pt"
+    }
+    dataset = UniversalEmbeddings(**kwargs)
     index_loader = init_indices_loader(args, dataset)
     encoder_loader = init_encoder_loader(args, dataset)
 
-    main_net = MLP(n_in=args.largest_text_dim, hidden_layers=[], n_out=args.largest_image_dim).to(args.device)
-    hnet = HMLP(main_net.param_shapes, uncond_emb_size=0, cond_emb_size=args.image_embed_dim, num_cond_embs=args.num_image_encoders)
-    hnet.apply_hyperfan_init(mnet=main_net)
-    hnet = hnet.to(args.device)
+    # load in the hyper-network
+    args.num_image_encoders = dataset.num_image_encoders
+    model = Custom2(args)
+
+    # optimizer and learning rate scheduler
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    scheduler = None
+
+    # loss function and grad-scaler
+    criterion = ClipLoss()
+    scaler = None
+
+    # training loop
+    for epoch in range(args.num_epochs):
+        train_logs = train_one_epoch(
+            args, model, (dataset, index_loader, encoder_loader),
+            criterion, optimizer, scheduler, scaler, epoch
+        )
+        print(train_logs)
+        break
+
+
+
+def setup_args():
+    parser = argparse.ArgumentParser()
+    # overall settings
+    parser.add_argument("--device", type=str, default="cpu")
+    # model settings
+    parser.add_argument("--largest-image-dim", type=int, default=1024)
+    parser.add_argument("--largest-text-dim", type=int, default=768)
+    parser.add_argument("--num-image-encoders", type=int, default=1)
+    parser.add_argument("--encoder-batch-size", type=int, default=4)
+    parser.add_argument("--hnet-cond-emb-dim", type=int, default=64)
+    parser.add_argument("--return-params", type=bool, default=False)
+    # training settings
+    parser.add_argument("--num-epochs", type=int, default=1)
+    parser.add_argument("--batch-size", type=int, default=20)
+    parser.add_argument("--learning-rate", type=float, default=1e-3)
+    parser.add_argument("--weight-decay", type=float, default=0.0)
+    parser.add_argument("--retain-graph", type=bool, default=False)
+
+    # return args
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == "__main__":
+    args = setup_args()
+    main(args)
