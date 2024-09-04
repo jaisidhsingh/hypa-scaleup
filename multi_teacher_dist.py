@@ -2,6 +2,11 @@ import os
 import argparse
 from typing_extensions import List
 from tqdm import tqdm
+import warnings
+warnings.simplefilter("ignore")
+
+from sklearn.cluster import KMeans
+from sklearn.metrics import accuracy_score
 
 import torch
 from torch.utils.data import DataLoader
@@ -10,9 +15,10 @@ import torch.nn.functional as F
 from torchvision import datasets as torch_datasets
 
 from data import MultiTeacherDistillationDataset
+from utils import ImageEncoder, MlpMapper
 
 
-class MultiTeacherDistillator():
+class Trainer():
     def __init__(self, args):
         self.device = args.device
         self.ckpt_save_folder = os.path.join(args.checkpoint_folder, args.experiment_type, args.experiment_name)
@@ -56,8 +62,11 @@ class MultiTeacherDistillator():
                 mapped_student_features = mapped_student_features.norm(dim=-1, keepdim=True)
 
                 # compute loss
-                sim_with_teachers = multiteacher_features @ mapped_student_features.T
-                loss_with_teachers = sum([F.cross_entropy(sim_with_teachers[:, j, :], labels) for j in range(num_teachers)])
+                loss_with_teachers = 0
+                if self.args.multi_teacher_loss == "on":
+                    sim_with_teachers = torch.einsum("bnd,cd->bnc", multiteacher_features, mapped_student_features)
+                    loss_with_teachers = sum([F.cross_entropy(sim_with_teachers[:, j, :], labels) for j in range(num_teachers)])
+                    loss_with_teachers = loss_with_teachers / num_teachers
 
                 loss_with_self = 0
                 if self.args.self_loss == "on":
@@ -70,6 +79,9 @@ class MultiTeacherDistillator():
                 # backward pass
                 total_loss.backward()
                 optimizer.step()
+
+                bar.update(1)
+                bar.set_postfix({"avg_loss": running_loss / (idx+1)})
 
             running_loss /= len(loader)
             logs["train"][f"epoch_{epoch+1}"] = {"avg_loss": running_loss}
@@ -86,6 +98,65 @@ class MultiTeacherDistillator():
         return logs
 
 
+def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
+    image_encoder = ImageEncoder(encoder_name)
+    mapper = MlpMapper(args.student_dim, [], args.teacher_dim)
+    mapper.load_state_dict(mapper_ckpt)
+    mapper = mapper.to(args.device)
+    mapper.eval()
+
+    dataset = torch_datasets.CIFAR10(root="../", train=False, download=False, transform=image_encoder.transform)
+    loader = DataLoader(dataset, batch_size=1024, pin_memory=True, shuffle=False)
+
+    X, y = [], []
+    for images, labels in loader:
+        images = images.float().to(args.device)
+        image_features = mapper(image_encoder(images)).cpu()
+
+        X.append(image_features)
+        y.append(labels)
+
+    X = torch.cat(X, dim=0).numpy()
+    y = torch.cat(y, dim=0).numpy()
+
+    kmc = KMeans(n_clusters=10)
+    y_preds = kmc.predict(X, y)
+    accuracy = accuracy_score(y, y_preds)
+    return round(accuracy * 100, 2)
+
+
+def main(args):
+    dataset = MultiTeacherDistillationDataset(args)
+    loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
+
+    model = nn.Linear(args.student_dim, args.teacher_dim)
+
+    initial_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict())
+    print("K-Means accuracy on CIFAR-10 for student model before distillation:")
+    print(initial_kmc_accuracy)
+    print(" ")
+
+    args.self_loss = "on"
+    args.multi_teacher_loss = "off"
+    trainer = Trainer(args)
+    trainer.train(model, loader)
+
+    self_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict())
+    print("K-Means accuracy on CIFAR-10 for student model after contrastive SSL:")
+    print(self_kmc_accuracy)
+    print(" ")
+
+    args.self_loss = "on"
+    args.multi_teacher_loss = "on"
+    trainer = Trainer(args)
+    trainer.train(model, loader)
+
+    final_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict())
+    print("K-Means accuracy on CIFAR-10 for student model after multi-teacher distillation:")
+    print(final_kmc_accuracy)
+    print(" ")
+
+
 def setup_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=str, default="cpu")
@@ -93,14 +164,22 @@ def setup_args():
     parser.add_argument("--batch-size", type=int, default=int(2**12))
     parser.add_argument("--scheduler", type=str, default="off")
     parser.add_argument("--self-loss", type=str, default="on")
+    parser.add_argument("--multi-teacher-loss", type=str, default="on")
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=0.0)
-    parser.add_argument("--num-teachers", type=int, default=5)
+    parser.add_argument("--num-teachers", type=int, default=3)
 
     parser.add_argument("--experiment-type", type=str, default="multi_distil")
     parser.add_argument("--experiment-name", type=str, default="test_0")
     parser.add_argument("--checkpoint-folder", type=str, default="../checkpoints")
+    parser.add_argument("--dataset-name", type=str, default="random")
     parser.add_argument("--logs-folder", type=str, default="../logs")
+    parser.add_argument("--results-folder", type=str, default="./datasets")
+
+    parser.add_argument("--student-index", type=int, default=0)
+    parser.add_argument("--teacher-indices", type=str, default="0,1,2")
+    parser.add_argument("--student-dim", type=int, default=384)
+    parser.add_argument("--teacher-dim", type=int, default=768)
 
     args = parser.parse_args()
     return args
@@ -108,9 +187,4 @@ def setup_args():
 
 if __name__ == "__main__":
     args = setup_args()
-    dataset = MultiTeacherDistillationDataset(args)
-    loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
-
-    model = nn.Linear(384, 768)
-    trainer = MultiTeacherDistillator(args)
-    trainer.train(model, loader)
+    main(args)

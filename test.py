@@ -25,10 +25,13 @@ def make_dummy_dataset():
         768: data,
         1024: data3
     }
-    torch.save(results, "datasets/random_image_embeddings.pt")
+    torch.save(results, "datasets/scaleup/random_image_embeddings.pt")
 
-    data = {768: {"sentence-t5-base": torch.randn(100, 768)}}
-    torch.save(data, "datasets/random_text_embeddings.pt")
+    data4 = {768: {"sentence-t5-base": torch.randn(100, 768)}}
+    torch.save(data4, "datasets/scaleup/random_text_embeddings.pt")
+
+    torch.save({768: data}, "datasets/multi_distil/random/dim_768.pt")
+    torch.save({384: data2}, "datasets/multi_distil/random/dim_384.pt")
 
 
 def test_generators():
@@ -45,4 +48,4 @@ def test_generators():
 
 
 if __name__ == "__main__":
-    test_generators()
+    make_dummy_dataset()

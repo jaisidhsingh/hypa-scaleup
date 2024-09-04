@@ -7,19 +7,20 @@ import random
 class MultiTeacherDistillationDataset(Dataset):
     def __init__(self, args):
         self.teacher_features = torch.load(os.path.join(
-            args.results_folder, args.experiment_type, f"dim_{args.teacher_dim}.pt"
-        ))
+            args.results_folder, args.experiment_type, args.dataset_name, f"dim_{args.teacher_dim}.pt"
+        ))[args.teacher_dim]
+
         total_teacher_keys = list(self.teacher_features.keys())
-        unwanted_keys = [total_teacher_keys[j] for j in range(len(total_teacher_keys)) if j not in args.teacher_indices]
+        unwanted_keys = [total_teacher_keys[j] for j in range(len(total_teacher_keys)) if str(j) not in args.teacher_indices.split(",")]
         for k in unwanted_keys:
             self.teacher_features.pop(k)
 
         self.student_features = torch.load(os.path.join(
-            args.results_folder, args.experiment_type, f"dim_{args.student_dim}.pt"
-        ))
+            args.results_folder, args.experiment_type, args.dataset_name, f"dim_{args.student_dim}.pt"
+        ))[args.student_dim]
 
         total_student_keys = list(self.student_features.keys())
-        unwanted_keys = [total_student_keys[j] for j in range(len(total_student_keys)) if j not in args.student_indices]
+        unwanted_keys = [total_student_keys[j] for j in range(len(total_student_keys)) if j != args.student_index]
         for k in unwanted_keys:
             self.student_features.pop(k)
 
