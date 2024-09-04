@@ -129,7 +129,7 @@ def encode_cifar10_train(args):
         store = []
         for images, _ in loader:
             images = images.float().to(args.device)
-            image_features = encoder(images)
+            image_features = encoder.encode_image(images)
             store.append(image_features)
 
         store = torch.cat(store, dim=0)
@@ -147,7 +147,7 @@ def encode_cifar10_train(args):
         store = []
         for images, _ in loader:
             images = images.float().to(args.device)
-            image_features = encoder(images)
+            image_features = encoder.encode_image(images)
             store.append(image_features)
 
         store = torch.cat(store, dim=0)
