@@ -91,6 +91,7 @@ class Trainer():
         return logs
 
 
+@torch.no_grad()
 def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
     image_encoder = ImageEncoder(encoder_name)
     mapper = MlpMapper(args.student_dim, [], args.teacher_dim)
@@ -99,7 +100,7 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
     mapper.eval()
 
     dataset = torch_datasets.CIFAR10(root=args.dataset_root, train=False, download=False, transform=image_encoder.transform)
-    loader = DataLoader(dataset, batch_size=1024, pin_memory=True, shuffle=False)
+    loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True, shuffle=False)
 
     X, y = [], []
     for images, labels in loader:
@@ -107,6 +108,7 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
         image_features = mapper(image_encoder.encode_image(images)).cpu()
 
         X.append(image_features)
+        del image_features
         y.append(labels)
 
     X = torch.cat(X, dim=0).numpy()
