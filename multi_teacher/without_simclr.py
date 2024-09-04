@@ -211,6 +211,7 @@ def setup_args():
     parser.add_argument("--teacher-indices", type=str, default="0,1,2")
     parser.add_argument("--student-dim", type=int, default=384)
     parser.add_argument("--teacher-dim", type=int, default=768)
+    parser.add_argument("--random-seed", type=int, default=0)
 
     args = parser.parse_args()
     return args
