@@ -75,11 +75,12 @@ class Trainer():
                 loss_with_teachers.backward()
                 optimizer.step()
 
+                bar.set_postfix({"loss": loss_with_teachers.item(), "epoch": epoch+1})
+
 
             running_loss /= len(loader)
             logs["train"][f"epoch_{epoch+1}"] = {"avg_loss": running_loss}
             bar.update(1)
-            bar.set_postfix({"avg_loss": running_loss, "step": epoch+1, "ref_loss": ref_loss})
 
             # saving
             if (epoch+1) in [100]:
@@ -168,7 +169,7 @@ def encode_cifar10_train(args):
 
 
 def main(args):
-    torch.manual_seed(args.random_seed)
+    # torch.manual_seed(args.random_seed)
     dataset = MultiTeacherDistillationDataset(args)
     loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
 
