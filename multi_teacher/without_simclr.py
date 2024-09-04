@@ -80,7 +80,7 @@ class Trainer():
             logs["train"][f"epoch_{epoch+1}"] = {"avg_loss": running_loss}
 
             # saving
-            if (epoch+1) in [1, 5, 10, 20, 40]:
+            if (epoch+1) in [100]:
                 dump = {
                     "model": model.state_dict(),
                     "optimizer": optimizer.state_dict(),
@@ -190,9 +190,9 @@ def setup_args():
     parser.add_argument("--experiment-type", type=str, default="multi_distil")
     parser.add_argument("--experiment-name", type=str, default="test_0")
     parser.add_argument("--checkpoint-folder", type=str, default="../checkpoints")
-    parser.add_argument("--dataset-name", type=str, default="random")
+    parser.add_argument("--dataset-name", type=str, default="cifar10_train")
     parser.add_argument("--logs-folder", type=str, default="../logs")
-    parser.add_argument("--results-folder", type=str, default="./datasets")
+    parser.add_argument("--results-folder", type=str, default="/home/mila/s/sparsha.mishra/scratch/hyperalignment/results")
 
     parser.add_argument("--student-index", type=int, default=0)
     parser.add_argument("--teacher-indices", type=str, default="0,1,2")
@@ -205,4 +205,4 @@ def setup_args():
 
 if __name__ == "__main__":
     args = setup_args()
-    main(args)
+    encode_cifar10_train(args)
