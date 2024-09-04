@@ -117,21 +117,22 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
     accuracy = accuracy_score(y, y_preds)
     return round(accuracy * 100, 2)
 
-
+@torch.no_grad()
 def encode_cifar10_train(args):
     teacher_names = ["vit_base_patch16_224", "deit_base_patch16_224", "swin_small_patch14_window7_224.ms_in22k_ft_in1k"]
     teacher_data = {}
     for name in teacher_names:
         encoder = ImageEncoder(name)
         dataset = torch_datasets.CIFAR10(root=args.dataset_root, train=True, download=False, transform=encoder.transform)
-        loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True)
+        loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, pin_memory=False)
 
         store = []
         bar = tqdm(total=len(loader))
         for images, _ in loader:
             images = images.float().to(args.device)
-            image_features = encoder.encode_image(images)
+            image_features = encoder.encode_image(images).cpu()
             store.append(image_features)
+            del image_features
             bar.update(1)
 
         store = torch.cat(store, dim=0)
@@ -150,7 +151,7 @@ def encode_cifar10_train(args):
         bar = tqdm(total=len(loader))
         for images, _ in loader:
             images = images.float().to(args.device)
-            image_features = encoder.encode_image(images)
+            image_features = encoder.encode_image(images).cpu()
             store.append(image_features)
             bar.update(1)
 
