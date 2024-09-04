@@ -74,7 +74,7 @@ class Trainer():
                 optimizer.step()
 
                 bar.update(1)
-                bar.set_postfix({"avg_loss": running_loss / (idx+1)})
+                bar.set_postfix({"avg_loss": running_loss / (idx+1), "step": idx+1})
 
             running_loss /= len(loader)
             logs["train"][f"epoch_{epoch+1}"] = {"avg_loss": running_loss}
@@ -105,7 +105,7 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
     X, y = [], []
     for images, labels in loader:
         images = images.float().to(args.device)
-        image_features = mapper(image_encoder.encode_image(images)).cpu()
+        image_features = image_encoder.encode_image(images).cpu()
 
         X.append(image_features)
         del image_features
