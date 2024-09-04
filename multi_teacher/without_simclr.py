@@ -107,16 +107,16 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt, mapper_on=True):
         images = images.float().to(args.device)
         image_features = image_encoder.encode_image(images)
         if mapper_on:
-            image_features = mapper(image_features).cpu()
+            image_features = mapper(image_features)
 
-        X.append(image_features)
+        X.append(image_features.cpu())
         del image_features
         y.append(labels)
 
     X = torch.cat(X, dim=0).numpy()
     y = torch.cat(y, dim=0).numpy()
 
-    kmc = KMeans(n_clusters=10).fit(X)
+    kmc = KMeans(n_clusters=10, n_init="auto").fit(X)
     y_preds = kmc.predict(X, y)
     accuracy = accuracy_score(y, y_preds)
     return round(accuracy * 100, 2)
