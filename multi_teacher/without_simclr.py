@@ -1,3 +1,4 @@
+
 import os
 import argparse
 from typing_extensions import List
@@ -61,19 +62,11 @@ class Trainer():
                 mapped_student_features = model(student_features)
                 mapped_student_features = mapped_student_features.norm(dim=-1, keepdim=True)
 
-                # compute loss
-                loss_with_teachers = 0
-                if self.args.multi_teacher_loss == "on":
-                    sim_with_teachers = torch.einsum("bnd,cd->bnc", multiteacher_features, mapped_student_features)
-                    loss_with_teachers = sum([F.cross_entropy(sim_with_teachers[:, j, :], labels) for j in range(num_teachers)])
-                    loss_with_teachers = loss_with_teachers / num_teachers
+                sim_with_teachers = torch.einsum("bnd,cd->bnc", multiteacher_features, mapped_student_features)
+                loss_with_teachers = sum([F.cross_entropy(sim_with_teachers[:, j, :], labels) for j in range(num_teachers)])
+                loss_with_teachers = loss_with_teachers / num_teachers
 
-                loss_with_self = 0
-                if self.args.self_loss == "on":
-                    sim_with_self = mapped_student_features @ mapped_student_features.T
-                    loss_with_self = F.cross_entropy(sim_with_self, labels)
-
-                total_loss = loss_with_teachers + loss_with_self
+                total_loss = loss_with_teachers
                 running_loss += total_loss.item()
 
                 # backward pass
@@ -125,6 +118,44 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
     return round(accuracy * 100, 2)
 
 
+def encode_cifar10_train(args):
+    teacher_names = ["vit_base_patch16_224", "deit_base_patch16_224", "swin_small_patch14_window7_224.ms_in22k_ft_in1k"]
+    teacher_data = {}
+    for name in teacher_names:
+        encoder = ImageEncoder(name)
+        dataset = torch_datasets.CIFAR10(root="", train=True, download=False, transform=encoder.transform)
+        loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True)
+
+        store = []
+        for images, _ in loader:
+            images = images.float().to(args.device)
+            image_features = encoder(images)
+            store.append(image_features)
+
+        store = torch.cat(store, dim=0)
+        teacher_data[name] = store
+
+    torch.save({args.teacher_dim: teacher_data}, os.path.join(args.results_folder, args.experiment_type, args.dataset_name, f"dim_{args.teacher_dim}.pt"))
+
+    student_names = ["visformer_tiny.in1k"]
+    student_data = {}
+    for name in student_names:
+        encoder = ImageEncoder(name)
+        dataset = torch_datasets.CIFAR10(root="", train=True, download=False, transform=encoder.transform)
+        loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True)
+
+        store = []
+        for images, _ in loader:
+            images = images.float().to(args.device)
+            image_features = encoder(images)
+            store.append(image_features)
+
+        store = torch.cat(store, dim=0)
+        student_data[name] = store
+
+    torch.save({args.student_dim: student_data}, os.path.join(args.results_folder, args.experiment_type, args.dataset_name, f"dim_{args.student_dim}.pt"))
+
+
 def main(args):
     dataset = MultiTeacherDistillationDataset(args)
     loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
@@ -136,21 +167,8 @@ def main(args):
     print(initial_kmc_accuracy)
     print(" ")
 
-    args.self_loss = "on"
-    args.multi_teacher_loss = "off"
     trainer = Trainer(args)
-    trainer.train(model, loader)
-
-    self_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict())
-    print("K-Means accuracy on CIFAR-10 for student model after contrastive SSL:")
-    print(self_kmc_accuracy)
-    print(" ")
-
-    args.self_loss = "on"
-    args.multi_teacher_loss = "on"
-    trainer = Trainer(args)
-    trainer.train(model, loader)
-
+    train_logs = trainer.train(model, loader)
     final_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict())
     print("K-Means accuracy on CIFAR-10 for student model after multi-teacher distillation:")
     print(final_kmc_accuracy)
