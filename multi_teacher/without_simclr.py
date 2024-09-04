@@ -92,7 +92,7 @@ class Trainer():
 
 
 @torch.no_grad()
-def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
+def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt, mapper_on=True):
     image_encoder = ImageEncoder(encoder_name)
     mapper = MlpMapper(args.student_dim, [], args.teacher_dim)
     mapper.load_state_dict(mapper_ckpt)
@@ -105,7 +105,9 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
     X, y = [], []
     for images, labels in loader:
         images = images.float().to(args.device)
-        image_features = image_encoder.encode_image(images).cpu()
+        image_features = image_encoder.encode_image(images)
+        if mapper_on:
+            image_features = mapper(image_features).cpu()
 
         X.append(image_features)
         del image_features
@@ -169,7 +171,7 @@ def main(args):
 
     model = MlpMapper(args.student_dim, [], args.teacher_dim).to(args.device)
 
-    initial_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict())
+    initial_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict(), mapper_on=False)
     print("K-Means accuracy on CIFAR-10 for student model before distillation:")
     print(initial_kmc_accuracy)
     print(" ")
