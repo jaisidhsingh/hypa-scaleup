@@ -165,7 +165,7 @@ def main(args):
     dataset = MultiTeacherDistillationDataset(args)
     loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
 
-    model = nn.Linear(args.student_dim, args.teacher_dim)
+    model = MlpMapper(args.student_dim, [], args.teacher_dim)
 
     initial_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict())
     print("K-Means accuracy on CIFAR-10 for student model before distillation:")
