@@ -114,7 +114,7 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
     X = torch.cat(X, dim=0).numpy()
     y = torch.cat(y, dim=0).numpy()
 
-    kmc = KMeans(n_clusters=10)
+    kmc = KMeans(n_clusters=10).fit(X)
     y_preds = kmc.predict(X, y)
     accuracy = accuracy_score(y, y_preds)
     return round(accuracy * 100, 2)
