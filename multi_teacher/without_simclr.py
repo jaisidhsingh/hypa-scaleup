@@ -66,11 +66,10 @@ class Trainer():
                 loss_with_teachers = sum([F.cross_entropy(sim_with_teachers[:, j, :], labels) for j in range(num_teachers)])
                 loss_with_teachers = loss_with_teachers / num_teachers
 
-                total_loss = loss_with_teachers
-                running_loss += total_loss.item()
+                running_loss += loss_with_teachers.item()
 
                 # backward pass
-                total_loss.backward()
+                loss_with_teachers.backward()
                 optimizer.step()
 
 
@@ -171,7 +170,7 @@ def main(args):
 
     model = MlpMapper(args.student_dim, [], args.teacher_dim).to(args.device)
 
-    initial_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict(), mapper_on=True)
+    initial_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict(), mapper_on=False)
     print("K-Means accuracy on CIFAR-10 for student model before distillation:")
     print(initial_kmc_accuracy)
     print(" ")
