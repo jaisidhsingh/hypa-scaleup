@@ -110,6 +110,8 @@ class MultiTeacherDistillationDataset(Dataset):
         for k in unwanted_keys:
             self.teacher_features.pop(k)
 
+        self.teacher_model_names = [k for k in self.teacher_features.keys()]
+
         self.student_features = torch.load(os.path.join(
             args.results_folder, args.experiment_type, args.dataset_name, f"dim_{args.student_dim}.pt"
         ))[args.student_dim]
@@ -119,6 +121,7 @@ class MultiTeacherDistillationDataset(Dataset):
         for k in unwanted_keys:
             self.student_features.pop(k)
 
+        self.student_model_name = [k for k in self.student_features.keys()][0]
         self.num_samples = self.student_features[list(self.student_features.keys())[0]].shape[0]
 
     def __len__(self):

@@ -211,4 +211,4 @@ def setup_args():
 
 if __name__ == "__main__":
     args = setup_args()
-    encode_cifar10_train(args)
+    main(args)
