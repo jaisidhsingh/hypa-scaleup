@@ -4,6 +4,40 @@ from torch.utils.data import Dataset
 import random
 
 
+class MultiTeacherDistillationDataset(Dataset):
+    def __init__(self, args):
+        self.teacher_features = torch.load(os.path.join(
+            args.results_folder, args.experiment_type, f"dim_{args.teacher_dim}.pt"
+        ))
+        total_teacher_keys = list(self.teacher_features.keys())
+        unwanted_keys = [total_teacher_keys[j] for j in range(len(total_teacher_keys)) if j not in args.teacher_indices]
+        for k in unwanted_keys:
+            self.teacher_features.pop(k)
+
+        self.student_features = torch.load(os.path.join(
+            args.results_folder, args.experiment_type, f"dim_{args.student_dim}.pt"
+        ))
+
+        total_student_keys = list(self.student_features.keys())
+        unwanted_keys = [total_student_keys[j] for j in range(len(total_student_keys)) if j not in args.student_indices]
+        for k in unwanted_keys:
+            self.student_features.pop(k)
+
+        self.num_samples = self.student_features[list(self.student_features.keys())[0]].shape[0]
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        teacher_features = torch.cat(
+            [self.teacher_features[k][idx].unsqueeze(0) for k in self.teacher_features.keys()],
+            dim=0
+        )
+        student_key = list(self.student_features.keys())[0]
+        student_features = self.student_features[student_key][idx]
+        return student_features, teacher_features
+
+
 class UniversalEmbeddings(Dataset):
     def __init__(self, image_data_path, text_data_path):
         self.image_embeddings = torch.load(image_data_path)
