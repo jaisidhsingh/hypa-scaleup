@@ -119,7 +119,7 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
 
 @torch.no_grad()
 def encode_cifar10_train(args):
-    teacher_names = ["vit_base_patch16_224", "deit_base_patch16_224", "swin_small_patch14_window7_224.ms_in22k_ft_in1k"]
+    teacher_names = ["vit_base_patch16_224", "deit_base_patch16_224", "swin_small_patch4_window7_224.ms_in22k_ft_in1k"]
     teacher_data = {}
     for name in teacher_names:
         encoder = ImageEncoder(name)
