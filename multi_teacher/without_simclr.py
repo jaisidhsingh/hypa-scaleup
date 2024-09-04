@@ -104,7 +104,7 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
     X, y = [], []
     for images, labels in loader:
         images = images.float().to(args.device)
-        image_features = mapper(image_encoder(images)).cpu()
+        image_features = mapper(image_encoder.encode_image(images)).cpu()
 
         X.append(image_features)
         y.append(labels)
@@ -177,7 +177,7 @@ def main(args):
 
 def setup_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--num-epochs", type=int, default=40)
     parser.add_argument("--batch-size", type=int, default=int(2**12))
     parser.add_argument("--scheduler", type=str, default="off")
