@@ -36,6 +36,7 @@ class Trainer():
 
         optimizer = torch.optim.Adam(model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
         scheduler = None
+        ref_loss = 0
 
         logs = {"train": {}}
         for epoch in range(num_epochs):
@@ -67,6 +68,8 @@ class Trainer():
                 loss_with_teachers = loss_with_teachers / num_teachers
 
                 running_loss += loss_with_teachers.item()
+                if idx == 0:
+                    ref_loss = loss_with_teachers.item()
 
                 # backward pass
                 loss_with_teachers.backward()
@@ -74,7 +77,7 @@ class Trainer():
 
 
             running_loss /= len(loader)
-            logs["train"][f"epoch_{epoch+1}"] = {"avg_loss": running_loss}
+            logs["train"][f"epoch_{epoch+1}"] = {"avg_loss": running_loss, "ref_loss": ref_loss}
             bar.update(1)
             bar.set_postfix({"avg_loss": running_loss, "step": epoch+1})
 
@@ -115,7 +118,7 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt, mapper_on=True):
     X = torch.cat(X, dim=0).numpy()
     y = torch.cat(y, dim=0).numpy()
 
-    kmc = KMeans(n_clusters=10, n_init="auto").fit(X)
+    kmc = KMeans(n_clusters=10, n_init="auto", random_state=args.random_seed).fit(X)
     y_preds = kmc.predict(X, y)
     accuracy = accuracy_score(y, y_preds)
     return round(accuracy * 100, 2)
@@ -165,6 +168,7 @@ def encode_cifar10_train(args):
 
 
 def main(args):
+    torch.manual_seed(args.random_seed)
     dataset = MultiTeacherDistillationDataset(args)
     loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
 
