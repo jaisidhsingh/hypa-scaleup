@@ -77,9 +77,9 @@ class Trainer():
 
 
             running_loss /= len(loader)
-            logs["train"][f"epoch_{epoch+1}"] = {"avg_loss": running_loss, "ref_loss": ref_loss}
+            logs["train"][f"epoch_{epoch+1}"] = {"avg_loss": running_loss}
             bar.update(1)
-            bar.set_postfix({"avg_loss": running_loss, "step": epoch+1})
+            bar.set_postfix({"avg_loss": running_loss, "step": epoch+1, "ref_loss": ref_loss})
 
             # saving
             if (epoch+1) in [100]:
