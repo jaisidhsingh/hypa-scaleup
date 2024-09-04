@@ -171,14 +171,14 @@ def main(args):
 
     model = MlpMapper(args.student_dim, [], args.teacher_dim).to(args.device)
 
-    initial_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict(), mapper_on=False)
+    initial_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict(), mapper_on=True)
     print("K-Means accuracy on CIFAR-10 for student model before distillation:")
     print(initial_kmc_accuracy)
     print(" ")
 
     trainer = Trainer(args)
     train_logs = trainer.train(model, loader)
-    final_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict(), mapper_on=False)
+    final_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict(), mapper_on=True)
     print("K-Means accuracy on CIFAR-10 for student model after multi-teacher distillation:")
     print(final_kmc_accuracy)
     print(" ")
