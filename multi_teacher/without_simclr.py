@@ -98,7 +98,7 @@ def evaluate_kmc_cifar10(args, encoder_name, mapper_ckpt):
     mapper = mapper.to(args.device)
     mapper.eval()
 
-    dataset = torch_datasets.CIFAR10(root="../", train=False, download=False, transform=image_encoder.transform)
+    dataset = torch_datasets.CIFAR10(root=args.dataset_root, train=False, download=False, transform=image_encoder.transform)
     loader = DataLoader(dataset, batch_size=1024, pin_memory=True, shuffle=False)
 
     X, y = [], []
@@ -123,7 +123,7 @@ def encode_cifar10_train(args):
     teacher_data = {}
     for name in teacher_names:
         encoder = ImageEncoder(name)
-        dataset = torch_datasets.CIFAR10(root="", train=True, download=False, transform=encoder.transform)
+        dataset = torch_datasets.CIFAR10(root=args.dataset_root, train=True, download=False, transform=encoder.transform)
         loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True)
 
         store = []
@@ -141,7 +141,7 @@ def encode_cifar10_train(args):
     student_data = {}
     for name in student_names:
         encoder = ImageEncoder(name)
-        dataset = torch_datasets.CIFAR10(root="", train=True, download=False, transform=encoder.transform)
+        dataset = torch_datasets.CIFAR10(root=args.dataset_root, train=True, download=False, transform=encoder.transform)
         loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True)
 
         store = []
@@ -193,6 +193,7 @@ def setup_args():
     parser.add_argument("--dataset-name", type=str, default="cifar10_train")
     parser.add_argument("--logs-folder", type=str, default="../logs")
     parser.add_argument("--results-folder", type=str, default="/home/mila/s/sparsha.mishra/scratch/hyperalignment/results")
+    parser.add_argument("--dataset-root", type=str, default="/home/mila/s/sparsha.mishra/scratch/cifar10_torchvision")
 
     parser.add_argument("--student-index", type=int, default=0)
     parser.add_argument("--teacher-indices", type=str, default="0,1,2")
