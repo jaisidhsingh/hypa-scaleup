@@ -127,10 +127,12 @@ def encode_cifar10_train(args):
         loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True)
 
         store = []
+        bar = tqdm(total=len(loader))
         for images, _ in loader:
             images = images.float().to(args.device)
             image_features = encoder.encode_image(images)
             store.append(image_features)
+            bar.update(1)
 
         store = torch.cat(store, dim=0)
         teacher_data[name] = store
@@ -145,10 +147,12 @@ def encode_cifar10_train(args):
         loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True)
 
         store = []
+        bar = tqdm(total=len(loader))
         for images, _ in loader:
             images = images.float().to(args.device)
             image_features = encoder.encode_image(images)
             store.append(image_features)
+            bar.update(1)
 
         store = torch.cat(store, dim=0)
         student_data[name] = store
@@ -179,7 +183,7 @@ def setup_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--num-epochs", type=int, default=40)
-    parser.add_argument("--batch-size", type=int, default=int(2**12))
+    parser.add_argument("--batch-size", type=int, default=int(2**9))
     parser.add_argument("--scheduler", type=str, default="off")
     parser.add_argument("--self-loss", type=str, default="on")
     parser.add_argument("--multi-teacher-loss", type=str, default="on")
