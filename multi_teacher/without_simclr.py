@@ -178,7 +178,7 @@ def main(args):
 
     trainer = Trainer(args)
     train_logs = trainer.train(model, loader)
-    final_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict())
+    final_kmc_accuracy = evaluate_kmc_cifar10(args, dataset.student_model_name, model.state_dict(), mapper_on=False)
     print("K-Means accuracy on CIFAR-10 for student model after multi-teacher distillation:")
     print(final_kmc_accuracy)
     print(" ")
