@@ -1,0 +1,155 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from hypnettorch.hnets import HMLP
+import numpy as np
+import argparse
+
+
+class HyperNetwork(nn.Module):
+    def __init__(self, param_shapes, cond_emb_dim, num_cond_embs):
+        super().__init__()
+        self.param_shapes = param_shapes # `param_shapes = [[D_out, D_in], [D_out]]`
+        self.cond_embs = nn.Embedding(num_cond_embs, cond_emb_dim)
+        self.to_weight = nn.Linear(cond_emb_dim, param_shapes[0][0] * param_shapes[0][1])
+        self.to_bias = nn.Linear(cond_emb_dim, param_shapes[1][0])
+    
+    def forward(self, cond_id):
+        if type(cond_id) != list:
+            cond_id = [cond_id]
+
+        cond_id = torch.tensor(cond_id).long().to(self.to_weight.weight.device) 
+        num_conds = len(cond_id)
+        cond_emb = self.cond_embs(cond_id)
+
+        params = []
+        for i in range(num_conds):
+            predicted_weight = self.to_weight(cond_emb[i])
+            predicted_weight = predicted_weight.view((self.param_shapes[0][0], self.param_shapes[0][1]))
+
+            predicted_bias = self.to_bias(cond_emb[i])
+            predicted_bias = predicted_bias.view((self.param_shapes[0][1],))
+
+            if num_conds == 1:
+                return [predicted_weight, predicted_bias]
+
+            else:
+                params.append([predicted_weight, predicted_bias])
+
+        return params
+
+
+def clip_loss(logit_scale, image_features, text_features):
+    batch_size = image_features.shape[0]
+    labels = torch.arange(batch_size, dtype=torch.long).to(image_features.device)
+
+    logit_scale = logit_scale.exp()
+    logits_per_image = logit_scale * image_features @ text_features.T
+    logits_per_text = logit_scale * text_features @ image_features.T
+
+    loss = F.cross_entropy(logits_per_image, labels) + F.cross_entropy(logits_per_text, labels)
+    return loss / 2
+
+
+def train_attempt(args):
+    """
+    -----
+    Goal:
+    ----- 
+    Train a hyper-network which outputs the largest possible mapping, i.e.,
+    (768 x 768). Encoder pairs which have smaller embed dims will be mapped by a slice
+    of this largest possible mapping, for e.g., if we want to map from 768 to 384, then
+    mapping = lambda x: x @ predicted_weight[:384, :].T + predicted_bias[:384]
+
+    ------------------------------------
+    Implementation details of this test:
+    ------------------------------------
+    Let us say we have 6 image encoders: (i)  3 of embed dim = 384, 
+    (ii) 3 of embed dim = 768. Also, we have only 2 steps per epoch. 
+    In the first step, we sample the image encoders of embed dim = 384. 
+    The next step uses image encoders of embed dim = 768. 
+    """
+
+    # load the hyper-network
+    mapper_D_in = 768 # fixed text encoder
+    mapper_D_out_over_steps = [384, 768]
+    largest_image_embed_dim = max(mapper_D_out_over_steps)
+    largest_mapping_shape = [ [largest_image_embed_dim, mapper_D_in], [largest_image_embed_dim] ]
+
+    if args.use_custom_hnet:
+        model = HyperNetwork(largest_mapping_shape, cond_emb_dim=8, num_cond_embs=6)
+    else:
+        model = HMLP(largest_mapping_shape, layers=[], cond_in_size=8, num_cond_embs=6, uncond_in_size=0)
+
+    active_image_encoders_over_steps = [
+        # 384 embed dim encoders are used first
+        [0, 1, 2],
+        # 768 embed dim encoders are used second
+        [3, 4, 5]
+    ]
+
+    # dataset of embeddings
+    batch_size = 4
+    dataset = [
+        # first batch of the dataset
+        (
+            torch.randn(batch_size, 3, 384), # image_features
+            torch.randn(batch_size, mapper_D_in) # text_features
+        ),
+        # second batch of the dataset
+        (
+            torch.randn(batch_size, 3, 768), # image_features
+            torch.randn(batch_size, mapper_D_in) # text_features
+        )
+    ]
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    num_epochs = 2
+    num_batches = len(dataset)
+    logit_scale = torch.tensor(np.log(100.0))
+
+    for epoch in range(num_epochs):
+        # train loop
+        total_loss = 0
+
+        for idx in range(num_batches):
+            step = epoch * (num_batches) + idx
+            
+            (image_features, text_features) = dataset[idx]
+            N = image_features.shape[1]
+
+            optimizer.zero_grad()
+            cond_ids = active_image_encoders_over_steps[idx]
+            params = model(cond_id=cond_ids)
+
+            D_out = mapper_D_out_over_steps[idx]
+
+            for j in range(N):
+                mapped_text_features = text_features @ params[j][0][:D_out, :].T + params[j][1][:D_out]
+                loss = clip_loss(logit_scale, image_features[:, j, :], mapped_text_features)
+                total_loss += loss
+            
+            total_loss = total_loss / N
+
+            try:
+                total_loss.backward(retain_graph=args.retain_graph)
+                optimizer.step()
+
+                print(f"Training step {step+1} (epoch {epoch+1}) completed")
+                print(f"Image encoder embed dim here is {D_out}")
+                print(" ")
+            
+            except Exception as error:
+                print("Error occured at step", step+1, f"(epoch {epoch+1})")
+                print(f"Image encoder embed dim here is {D_out}")
+                print("----------------------------")
+                print(error)
+                print(" ")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--retain-graph", type=bool, default=False)
+    parser.add_argument("--use-custom-hnet", type=bool, default=False)
+    args = parser.parse_args()
+    train_attempt(args)

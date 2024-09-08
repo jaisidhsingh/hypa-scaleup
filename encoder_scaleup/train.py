@@ -19,7 +19,7 @@ from model import *
 # shut off warnings
 warnings.simplefilter("ignore")
 # switch on anomaly detection
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 
 def train_one_epoch(args, hnet, data_objects, criterion, optimizer, scheduler, scaler, epoch):
@@ -62,20 +62,16 @@ def train_one_epoch(args, hnet, data_objects, criterion, optimizer, scheduler, s
         # forward pass
         params = []
         with autocast():
-            print(encoder_indices)
-            # `mapped_text_features` has length = num_total_image_encoders
-            outputs = hnet(
-                conditions=encoder_indices,
-                input_features=text_features,
-                slice_dims=(D_img, D_txt)
-            )
+            params = hnet(cond_id=[i for i in range(N)])
 
             for i in range(N):
-                # now get the loss and predictions
-                # mapped_text_features = text_features @ outputs[i][0][:D_img, :D_txt].T + outputs[i][1][:D_img]
+                weight = params[i][0][:D_img, :D_txt]
+                bias = params[i][1][:D_img]
+                mapped_text_features = text_features @ weight.T + bias
+                mapped_text_features = mapped_text_features / mapped_text_features.norm(dim=-1, keepdim=True)
 
                 loss, inbatch_corrects = criterion.compute_loss_and_accuracy(
-                    logit_scale, image_features[:, i, :].view(B, D_img), outputs[i]
+                    logit_scale, image_features[:, i, :].view(B, D_img), mapped_text_features
                 )
 
                 total_loss += loss
@@ -107,8 +103,8 @@ def train_one_epoch(args, hnet, data_objects, criterion, optimizer, scheduler, s
 def main(args):
     # load in training data
     kwargs = {
-        "image_data_path": "datasets/random_image_embeddings.pt",
-        "text_data_path": "datasets/random_text_embeddings.pt"
+        "image_data_path": "../datasets/scaleup/random_image_embeddings.pt",
+        "text_data_path": "../datasets/scaleup/random_text_embeddings.pt"
     }
     dataset = UniversalEmbeddings(**kwargs)
     index_loader = init_indices_loader(args, dataset)
@@ -116,8 +112,11 @@ def main(args):
 
     # load in the hyper-network
     args.num_image_encoders = dataset.num_image_encoders
-    model = Custom2(args)
-
+    model = HMLP(
+        [[args.largest_image_dim, args.largest_text_dim], [args.largest_image_dim]], uncond_in_size=0,
+        cond_in_size=args.hnet_cond_emb_dim, layers=[],
+        num_cond_embs=args.num_image_encoders
+    )
     # optimizer and learning rate scheduler
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = None

@@ -18,9 +18,9 @@ for i in range(2):
     w_pred = hypernet(torch.randn(1, c)).reshape(d_out, d*2)
     w_pred = w_pred[:, :d]  # slice
 
-    #key = 'weight'
-    #f.__dict__[key] = w_pred  # set the value avoiding the internal logic of PyTorch
-    #f._parameters[key] = w_pred
+    key = 'weight'
+    f.__dict__[key] = w_pred  # set the value avoiding the internal logic of PyTorch
+    f._parameters[key] = w_pred
     y_ = x @ w_pred.T
 
     loss = criterion(y_, y)

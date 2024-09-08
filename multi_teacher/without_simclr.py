@@ -169,7 +169,7 @@ def encode_cifar10_train(args):
 
 
 def main(args):
-    # torch.manual_seed(args.random_seed)
+    torch.manual_seed(args.random_seed)
     dataset = MultiTeacherDistillationDataset(args)
     loader = DataLoader(dataset, batch_size=args.batch_size, pin_memory=True)
 
@@ -192,7 +192,7 @@ def setup_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--num-epochs", type=int, default=40)
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--batch-size", type=int, default=4096)
     parser.add_argument("--scheduler", type=str, default="off")
     parser.add_argument("--self-loss", type=str, default="on")
     parser.add_argument("--multi-teacher-loss", type=str, default="on")
