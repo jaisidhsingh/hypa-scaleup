@@ -39,30 +39,30 @@ def train_attempt(args):
 
     # load the hyper-network
     mapper_D_in = 64 # fixed text encoder
-    mapper_D_out_over_steps = [16, 32, 64]
+    mapper_D_out_over_steps = [32, 16]
     largest_image_embed_dim = max(mapper_D_out_over_steps)
     largest_mapping_shape = [ [largest_image_embed_dim, mapper_D_in], [largest_image_embed_dim] ]
 
     model = HMLP(largest_mapping_shape, layers=[], cond_in_size=8, num_cond_embs=4, uncond_in_size=0)
 
     active_image_encoders_over_steps = [
-        [ij for ij in range(0, 2)],
         [jk for jk in range(2, 4)],
+        [ij for ij in range(0, 2)],
     ]
 
     # dataset of embeddings
     batch_size = 4
     dataset = [
+        # second batch of the dataset
+        (
+            torch.randn(batch_size, 2, 32), # image_features
+            torch.randn(batch_size, mapper_D_in) # text_features
+        ),
         # first batch of the dataset
         (
             torch.randn(batch_size, 2, 16), # image_features
             torch.randn(batch_size, mapper_D_in) # text_features
         ),
-        # second batch of the dataset
-        (
-            torch.randn(batch_size, 2, 32), # image_features
-            torch.randn(batch_size, mapper_D_in) # text_features
-        )
     ]
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
