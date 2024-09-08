@@ -6,39 +6,6 @@ import numpy as np
 import argparse
 
 
-class HyperNetwork(nn.Module):
-    def __init__(self, param_shapes, cond_emb_dim, num_cond_embs):
-        super().__init__()
-        self.param_shapes = param_shapes # `param_shapes = [[D_out, D_in], [D_out]]`
-        self.cond_embs = nn.Embedding(num_cond_embs, cond_emb_dim)
-        self.to_weight = nn.Linear(cond_emb_dim, param_shapes[0][0] * param_shapes[0][1])
-        self.to_bias = nn.Linear(cond_emb_dim, param_shapes[1][0])
-    
-    def forward(self, cond_id):
-        if type(cond_id) != list:
-            cond_id = [cond_id]
-
-        cond_id = torch.tensor(cond_id).long().to(self.to_weight.weight.device) 
-        num_conds = len(cond_id)
-        cond_emb = self.cond_embs(cond_id)
-
-        params = []
-        for i in range(num_conds):
-            predicted_weight = self.to_weight(cond_emb[i])
-            predicted_weight = predicted_weight.view((self.param_shapes[0][0], self.param_shapes[0][1]))
-
-            predicted_bias = self.to_bias(cond_emb[i])
-            predicted_bias = predicted_bias.view((self.param_shapes[0][1],))
-
-            if num_conds == 1:
-                return [predicted_weight, predicted_bias]
-
-            else:
-                params.append([predicted_weight, predicted_bias])
-
-        return params
-
-
 def clip_loss(logit_scale, image_features, text_features):
     batch_size = image_features.shape[0]
     labels = torch.arange(batch_size, dtype=torch.long).to(image_features.device)
