@@ -92,46 +92,61 @@ class Custom1(nn.Module):
             bias = (embs[i] @ self.to_bias)[:D_img]
 
 
-class Custom2(nn.Module):
-    def __init__(self, args):
+class ConvHyperNet(nn.Module):
+    def __init__(self, dims, num_cond_embs, cond_emb_dim):
+        """
+        -----
+        Note:
+        -----
+
+        If len(dims["num_embed_dims"]) == N, then we need to make
+        N optimizers, each of which will contain the parameters of
+        `self.weights_decoder[i]` and `self.biases_decoder[i]`.
+        One more optimizer is needed to optimize the parameters of
+        `self.cond_embs`, `self.fc1`, `self.cn0`.
+        """
         super().__init__()
-        self.args = args
-        self.cond_embs = nn.Embedding(args.num_image_encoders, args.hnet_cond_emb_dim)
-        # project to text dim
-        self.fc1 = nn.Linear(args.hnet_cond_emb_dim, args.largest_text_dim)
-        self.cn0 = nn.Conv1d(1, 256, 1, 1)
-        # for all image dims we have
-        self.cn1 = nn.Conv1d(256, 384, 1, 1)
-        self.cn2 = nn.Conv1d(256, 768, 1, 1)
-        self.cn3 = nn.Conv1d(256, 1024, 1, 1)
+        self.dims = dims
+        self.num_cond_embs = num_cond_embs
+        self.cond_emb_dim = cond_emb_dim
+
+        self.cond_embs = nn.Embedding(num_cond_embs, cond_emb_dim)
+        self.fc1 = nn.Linear(cond_emb_dim, dims["text"])
+        self.cn0 = nn.Conv1d(1, dims["intermediate"], 1, 1)
+        
+        self.weights_decoder = [nn.Conv1d(dims["intermediate"], dims["image"][i], 1, 1) for i in range(dims["num_embed_dims"])]
+        self.weights_decoder = nn.ModuleList(self.weights_decoder)
+
+        self.biases_decoder = [nn.Linear(cond_emb_dim, dims["image"][i]) for i in range(dims["num_embed_dims"])]
+        self.biases_decoder = nn.ModuleList(self.biases_decoder)
+
+        self.decoder_lookup = {dims["image"][i]: i for i in range(dims["num_embed_dims"])}
         self.act = nn.ReLU()
 
-    def forward(self, conditions, input_features, slice_dims):
-        (D_img, D_txt) = slice_dims
-        num_conds = len(conditions) if type(conditions) == list else 1
-        conditions = torch.tensor(conditions).to(input_features.device)
-        cond_embs = self.cond_embs(conditions)
+    def forward(self, cond_id, D_img):
+        if type(cond_id) != list:
+            cond_id = [cond_id]
+        
+        cond_id = torch.tensor(cond_id).long().to(self.fc1.weight.device)
+        num_conds = len(cond_id)
 
-        outputs = []
+        params = []
+        cond_embs = self.cond_embs(cond_id)
         for i in range(num_conds):
-            x = self.fc1(cond_embs[i]) # at shape: [D_txt]
-            x = x.unsqueeze(0).unsqueeze(0) # at shape: [1, 1, D_txt]
-            x = self.act(self.cn0(x))
+            weight_base = self.fc1(cond_embs[i]) # shape: [cond_emb_dim]
+            weight_base = self.act(weight_base).unsqueeze(0).unsqueeze(0) # shape [1, 1, text_embed_dim]
+            weight_base = self.cn0(weight_base)
 
-            if D_img == 384:
-                x = self.cn1(x)
-
-            elif D_img == 768:
-                x = self.cn2(x)
-
-            elif D_img == 1024:
-                x = self.cn3(x)
-
-            mapped_features = input_features @ x.squeeze(0).T
-            outputs.append(mapped_features)
-
-        return outputs
-
+            index = self.decoder_lookup[D_img]
+            weight = self.weights_decoder[index](weight_base).squeeze(0)
+            bias = self.biases_decoder[index](cond_embs[i])
+        
+            if num_conds == 1:
+                return [weight, bias]
+            else:
+                params.append([weight, bias])
+        
+        return params
 
 
 def test():

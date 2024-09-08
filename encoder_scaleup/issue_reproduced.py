@@ -71,21 +71,16 @@ def train_attempt(args):
     """
 
     # load the hyper-network
-    mapper_D_in = 768 # fixed text encoder
-    mapper_D_out_over_steps = [384, 768]
+    mapper_D_in = 64 # fixed text encoder
+    mapper_D_out_over_steps = [16, 32, 64]
     largest_image_embed_dim = max(mapper_D_out_over_steps)
     largest_mapping_shape = [ [largest_image_embed_dim, mapper_D_in], [largest_image_embed_dim] ]
 
-    if args.use_custom_hnet:
-        model = HyperNetwork(largest_mapping_shape, cond_emb_dim=8, num_cond_embs=6)
-    else:
-        model = HMLP(largest_mapping_shape, layers=[], cond_in_size=8, num_cond_embs=6, uncond_in_size=0)
+    model = HMLP(largest_mapping_shape, layers=[], cond_in_size=8, num_cond_embs=4, uncond_in_size=0)
 
     active_image_encoders_over_steps = [
-        # 384 embed dim encoders are used first
-        [0, 1, 2],
-        # 768 embed dim encoders are used second
-        [3, 4, 5]
+        [ij for ij in range(0, 2)],
+        [jk for jk in range(2, 4)],
     ]
 
     # dataset of embeddings
@@ -93,12 +88,12 @@ def train_attempt(args):
     dataset = [
         # first batch of the dataset
         (
-            torch.randn(batch_size, 3, 384), # image_features
+            torch.randn(batch_size, 2, 16), # image_features
             torch.randn(batch_size, mapper_D_in) # text_features
         ),
         # second batch of the dataset
         (
-            torch.randn(batch_size, 3, 768), # image_features
+            torch.randn(batch_size, 2, 32), # image_features
             torch.randn(batch_size, mapper_D_in) # text_features
         )
     ]
@@ -118,7 +113,12 @@ def train_attempt(args):
             (image_features, text_features) = dataset[idx]
             N = image_features.shape[1]
 
-            optimizer.zero_grad()
+            if args.solve_with_gradacc:
+                if idx == 0:
+                    optimizer.zero_grad()
+            else:
+                optimizer.zero_grad()
+
             cond_ids = active_image_encoders_over_steps[idx]
             params = model(cond_id=cond_ids)
 
@@ -133,7 +133,12 @@ def train_attempt(args):
 
             try:
                 total_loss.backward(retain_graph=args.retain_graph)
-                optimizer.step()
+                
+                if args.solve_with_gradacc:
+                    if idx == num_batches-1:
+                        optimizer.step()
+                else:
+                    optimizer.step()
 
                 print(f"Training step {step+1} (epoch {epoch+1}) completed")
                 print(f"Image encoder embed dim here is {D_out}")
@@ -150,6 +155,6 @@ def train_attempt(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--retain-graph", type=bool, default=False)
-    parser.add_argument("--use-custom-hnet", type=bool, default=False)
+    parser.add_argument("--solve-with-gradacc", type=bool, default=False)
     args = parser.parse_args()
     train_attempt(args)
