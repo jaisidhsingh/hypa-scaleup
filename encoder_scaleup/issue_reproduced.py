@@ -71,9 +71,6 @@ def train_attempt(args):
     logit_scale = torch.tensor(np.log(100.0))
 
     for epoch in range(num_epochs):
-        # train loop
-        total_loss = 0
-
         for idx in range(num_batches):
             step = epoch * (num_batches) + idx
             
@@ -91,6 +88,7 @@ def train_attempt(args):
 
             D_out = mapper_D_out_over_steps[idx]
 
+            total_loss = 0
             for j in range(N):
                 mapped_text_features = text_features @ params[j][0][:D_out, :].T + params[j][1][:D_out]
                 loss = clip_loss(logit_scale, image_features[:, j, :], mapped_text_features)
